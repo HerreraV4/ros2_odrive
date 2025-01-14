@@ -1,18 +1,17 @@
 #include "ros_odrive/odrive.hpp"
 #include "ros_odrive/odrive_endpoint.hpp"
+#include <chrono>
+#include <string>
+
+#include "rclcpp/rclcpp.hpp"
 
 using namespace std;
 
-/**
- *
- * Odrive endpoint constructor
- * initialize USB library and local variables
- *
- */
+
 odrive_endpoint::odrive_endpoint()
 {
     if (libusb_init(&libusb_context_) != LIBUSB_SUCCESS) {
-        ROS_ERROR("* Error initializing USB!");
+        RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error initializing USB!");
     }
 }
 
@@ -164,7 +163,7 @@ int odrive_endpoint::execFunc(int endpoint_id)
 
     status = endpointRequest(endpoint_id, rx, rx_length, tx, 1, 0);
     if (status != LIBUSB_SUCCESS) {
-        ROS_ERROR("* execFunc: Error in endpoint request (%d)!", endpoint_id);
+         RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* execFunc: Error in endpoint request (%d)!", endpoint_id);
     }
     return status;
 }
@@ -234,11 +233,11 @@ int odrive_endpoint::endpointRequest(int endpoint_id, commBuffer& received_paylo
     int result = libusb_bulk_transfer(odrive_handle_, ODRIVE_OUT_EP,
     	    packet.data(), packet.size(), &sent_bytes, ODRIVE_TIMEOUT);
     if (result != LIBUSB_SUCCESS) {
-    ROS_ERROR("* Error in transfering data to USB!");
+     RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error in transfering data to USB!");
         ep_lock.unlock();
         return result;
     } else if (packet.size() != sent_bytes) {
-        ROS_ERROR("* Error in transfering data to USB, not all data transferred!");
+         RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error in transfering data to USB, not all data transferred!");
     }
 
     // Get responce
@@ -247,7 +246,7 @@ int odrive_endpoint::endpointRequest(int endpoint_id, commBuffer& received_paylo
     		receive_bytes, ODRIVE_MAX_BYTES_TO_RECEIVE,
     		&received_bytes, ODRIVE_TIMEOUT);
         if (result != LIBUSB_SUCCESS) {
-            ROS_ERROR("* Error in reading data from USB!");
+             RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error in reading data from USB!");
             ep_lock.unlock();
             return result;
         }
@@ -259,7 +258,7 @@ int odrive_endpoint::endpointRequest(int endpoint_id, commBuffer& received_paylo
 
         received_payload = decodeODrivePacket(receive_buffer, received_seq_no, receive_buffer);
         if (received_seq_no != seq_no) {
-            ROS_ERROR("* Error Received data out of order");
+             RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error Received data out of order");
         }
         received_length = received_payload.size();
     }
@@ -293,7 +292,7 @@ int odrive_endpoint::init(uint64_t serialNumber)
 
         int result = libusb_get_device_descriptor(device, &desc);
         if (result != LIBUSB_SUCCESS) {
-            ROS_ERROR("* Error getting device descriptor");
+             RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error getting device descriptor");
             continue;
         }
         /* Check USB devicei ID */
@@ -301,7 +300,7 @@ int odrive_endpoint::init(uint64_t serialNumber)
 
             libusb_device_handle *device_handle;
             if (libusb_open(device, &device_handle) != LIBUSB_SUCCESS) {
-                ROS_ERROR("* Error opeening USB device");
+                 RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error opeening USB device");
                 continue;
              }
 
@@ -311,13 +310,13 @@ int odrive_endpoint::init(uint64_t serialNumber)
 
             if ((libusb_kernel_driver_active(device_handle, ifNumber) != LIBUSB_SUCCESS) &&
                     (libusb_detach_kernel_driver(device_handle, ifNumber) != LIBUSB_SUCCESS)) {
-                ROS_ERROR("* Driver error");
+                 RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Driver error");
                 libusb_close(device_handle);
                 continue;
             }
 
             if ((result = libusb_claim_interface(device_handle, ifNumber)) !=  LIBUSB_SUCCESS) {
-                ROS_ERROR("* Error claiming device");
+                 RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error claiming device");
                 libusb_close(device_handle);
                 continue;
             } else {
@@ -326,7 +325,7 @@ int odrive_endpoint::init(uint64_t serialNumber)
  
  		result = libusb_get_string_descriptor_ascii(device_handle, desc.iSerialNumber, buf, 127);
                 if (result <= 0) {
-                    ROS_ERROR("* Error getting data");
+                     RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error getting data");
                     result = libusb_release_interface(device_handle, ifNumber);
                     libusb_close(device_handle);
                     continue;
@@ -336,7 +335,7 @@ int odrive_endpoint::init(uint64_t serialNumber)
                     std::string sn(stream.str());
 
                     if (sn.compare(0, strlen((const char*)buf), (const char*)buf) == 0) {
-                        ROS_INFO("Device 0x%8.8lX Found", serialNumber);
+                        RCLCPP_INFO(rclcpp::get_logger("odrive"), "Device 0x%8.8lX Found", serialNumber);
                         odrive_handle_ = device_handle;
                         attached_to_handle = true;
                         ret = ODRIVE_OK;
@@ -370,6 +369,7 @@ void odrive_endpoint::remove(void)
         odrive_handle_ = NULL;
     }
 }
+
 
 template int odrive_endpoint::getData(int, bool&);
 template int odrive_endpoint::getData(int, short&);

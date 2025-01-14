@@ -1,4 +1,8 @@
 #include "ros_odrive/odrive_utils.hpp"
+#include <chrono>
+#include <string>
+
+#include "rclcpp/rclcpp.hpp"
 
 using namespace std;
 
@@ -12,6 +16,8 @@ using namespace std;
  *  @return ODRIVE_OK on success
  *
  */
+
+
 int updateTargetConfig(odrive_endpoint *endpoint, Json::Value odrive_json, string config_file)
 {
     ifstream cfg;
@@ -27,30 +33,30 @@ int updateTargetConfig(odrive_endpoint *endpoint, Json::Value odrive_json, strin
         Json::Value config_json;
         bool res = reader.parse(json, config_json);
         if (!res) {
-            ROS_ERROR("* Error parsing %s json!", config_file.c_str());
+            RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error parsing %s json!", config_file.c_str());
             return ODRIVE_ERROR;
         }
         else {
             if (setChannelConfig(endpoint, odrive_json, config_json, false) != ODRIVE_OK) {
-                ROS_ERROR("* Error setting configuration!");
+                RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error setting configuration!");
                 return ODRIVE_ERROR;
             }
         }
         if (calibrateAxis0(endpoint, odrive_json) != ODRIVE_OK) {
-            ROS_ERROR("* Error calibrating axis 0!");
+            RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error calibrating axis 0!");
             return ODRIVE_ERROR;
         }
         if (calibrateAxis1(endpoint, odrive_json) != ODRIVE_OK) {
-            ROS_ERROR("* Error calibrating axis 1!");
+            RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error calibrating axis 1!");
             return ODRIVE_ERROR;
         }
         if (execOdriveFunc(endpoint, odrive_json, "save_configuration") != ODRIVE_OK) {
-            ROS_ERROR("* Error saving configuration!");
+            RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error saving configuration!");
             return ODRIVE_ERROR;
         }
     }
     else {
-        ROS_ERROR("* Error opening configuration file!");
+        RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error opening configuration file!");
     return ODRIVE_ERROR;
     }
 }
@@ -74,7 +80,7 @@ int setChannelConfig(odrive_endpoint *endpoint, Json::Value odrive_json, Json::V
     string name = config_json[i]["name"].asString();
     string type = config_json[i]["type"].asString();
 
-    ROS_INFO("Setting %s config value", name.c_str());
+    RCLCPP_INFO(rclcpp::get_logger("odrive"), "Setting %s config value", name.c_str());
 
     if (!type.compare("float")) {
             float val = config_json[i]["value"].asFloat();
@@ -109,7 +115,7 @@ int setChannelConfig(odrive_endpoint *endpoint, Json::Value odrive_json, Json::V
             writeOdriveData(endpoint, odrive_json, name, val);
     }
         else {
-            ROS_ERROR("* Error: invalid type for %s", name.c_str());
+            RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error: invalid type for %s", name.c_str());
             return ODRIVE_ERROR;
         }
     }
@@ -139,12 +145,15 @@ int calibrateAxis0(odrive_endpoint *endpoint, Json::Value odrive_json)
 
     u32val = AXIS_STATE_MOTOR_CALIBRATION;
     writeOdriveData(endpoint, odrive_json, string("axis0.requested_state"), u32val);
-    ros::Duration(10.0).sleep();
+    rclcpp::sleep_for(std::chrono::seconds(10));
+    //ros::Duration(10.0).sleep();
     bval = true;
     writeOdriveData(endpoint, odrive_json, string("axis0.motor.config.pre_calibrated"), bval);
     u32val = AXIS_STATE_ENCODER_OFFSET_CALIBRATION;
     writeOdriveData(endpoint, odrive_json, string("axis0.requested_state"), u32val);
-    ros::Duration(10.0).sleep();
+    //ros::Duration(10.0).sleep();
+    rclcpp::sleep_for(std::chrono::seconds(10));
+
     bval = true;
     writeOdriveData(endpoint, odrive_json, string("axis0.encoder.config.pre_calibrated"), bval);
 
@@ -171,12 +180,14 @@ int calibrateAxis1(odrive_endpoint *endpoint, Json::Value odrive_json)
 
     u32val = AXIS_STATE_MOTOR_CALIBRATION;
     writeOdriveData(endpoint, odrive_json, string("axis1.requested_state"), u32val);
-    ros::Duration(10.0).sleep();
+    //ros::Duration(10.0).sleep();
+    rclcpp::sleep_for(std::chrono::seconds(10));
     bval = true;
     writeOdriveData(endpoint, odrive_json, string("axis1.motor.config.pre_calibrated"), bval);
     u32val = AXIS_STATE_ENCODER_OFFSET_CALIBRATION;
     writeOdriveData(endpoint, odrive_json, string("axis1.requested_state"), u32val);
-    ros::Duration(10.0).sleep();
+    //ros::Duration(10.0).sleep();
+    rclcpp::sleep_for(std::chrono::seconds(10));
     bval = true;
     writeOdriveData(endpoint, odrive_json, string("axis1.encoder.config.pre_calibrated"), bval);
 
@@ -211,7 +222,7 @@ int getJson(odrive_endpoint *endpoint, Json::Value *odrive_json)
     Json::Reader reader;
     bool res = reader.parse(json, *odrive_json);
     if (!res) {
-        ROS_ERROR("* Error parsing json!");
+        RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error parsing json!");
         return 1;
     }
     return 0;
@@ -263,7 +274,7 @@ int getObjectByName(Json::Value odrive_json, std::string name, odrive_object *od
     }
 
     if (ret) {
-        ROS_ERROR("* %s not found!", name.c_str());
+        RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* %s not found!", name.c_str());
     }
     return ret;
 }
@@ -286,65 +297,65 @@ int readOdriveData(odrive_endpoint *endpoint, Json::Value odrive_json,
 
     ret = getObjectByName(odrive_json, object, &odo);
     if (ret) {
-        ROS_ERROR("* Error getting ID for %s", object.c_str());
+        RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error getting ID for %s", object.c_str());
     return ret;
     }
 
     if (odo.access.find("r") == string::npos) {
-        ROS_ERROR("* Error: invalid read access for %s", object.c_str());
+        RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error: invalid read access for %s", object.c_str());
         return ret;
     }
 
     if (!odo.type.compare("float")) {
-    if (sizeof(value) != sizeof(float)) {
-            ROS_ERROR("* Error value for %s is not float", object.c_str());
+        if (sizeof(value) != sizeof(float)) {
+            RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error value for %s is not float", object.c_str());
             return ODRIVE_ERROR;
-    }
+        }
     }
     else if (!odo.type.compare("uint8")) {
         if (sizeof(value) != sizeof(uint8_t)) {
-            ROS_ERROR("* Error value for %s is not uint8_t", object.c_str());
+            RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error value for %s is not uint8_t", object.c_str());
             return ODRIVE_ERROR;
         }
     }
     else if (!odo.type.compare("uint16")) {
         if (sizeof(value) != sizeof(uint16_t)) {
-            ROS_ERROR("* Error value for %s is not uint16_t", object.c_str());
+            RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error value for %s is not uint16_t", object.c_str());
             return ODRIVE_ERROR;
         }
     }
     else if (!odo.type.compare("uint32")) {
         if (sizeof(value) != sizeof(uint32_t)) {
-            ROS_ERROR("* Error value for %s is not uint32_t", object.c_str());
+            RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error value for %s is not uint32_t", object.c_str());
             return ODRIVE_ERROR;
         }
     }
     else if (!odo.type.compare("uint64")) {
         if (sizeof(value) != sizeof(uint64_t)) {
-            ROS_ERROR("* Error value for %s is not uint64_t", object.c_str());
+            RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error value for %s is not uint64_t", object.c_str());
             return ODRIVE_ERROR;
         }
     }
     else if (!odo.type.compare("int32")) {
         if (sizeof(value) != sizeof(int)) {
-            ROS_ERROR("* Error value for %s is not int", object.c_str());
+            RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error value for %s is not int", object.c_str());
             return ODRIVE_ERROR;
         }
     }
     else if (!odo.type.compare("int16")) {
         if (sizeof(value) != sizeof(short)) {
-            ROS_ERROR("* Error value for %s is not short", object.c_str());
+            RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error value for %s is not short", object.c_str());
             return ODRIVE_ERROR;
         }
     }
     else if (!odo.type.compare("bool")) {
         if (sizeof(value) != sizeof(bool)) {
-            ROS_ERROR("* Error value for %s is not bool", object.c_str());
+            RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error value for %s is not bool", object.c_str());
             return ODRIVE_ERROR;
         }
     }
     else {
-        ROS_ERROR("* Error: invalid type for %s", object.c_str());
+        RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error: invalid type for %s", object.c_str());
         return ODRIVE_ERROR;
     }
 
@@ -371,65 +382,65 @@ int writeOdriveData(odrive_endpoint *endpoint, Json::Value odrive_json,
 
     ret = getObjectByName(odrive_json, object, &odo);
     if (ret) {
-        ROS_ERROR("* Error: getting ID for %s", object.c_str());
+        RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error: getting ID for %s", object.c_str());
         return ODRIVE_ERROR;
     }
 
     if (odo.access.find("w") == string::npos) {
-        ROS_ERROR("* Error: invalid write access for %s", object.c_str());
+        RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error: invalid write access for %s", object.c_str());
         return ODRIVE_ERROR;
     }
 
     if (!odo.type.compare("float")) {
         if (sizeof(value) != sizeof(float)) {
-            ROS_ERROR("* Error value for %s is not float", object.c_str());
+            RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error value for %s is not float", object.c_str());
             return ODRIVE_ERROR;
         }
     }
     else if (!odo.type.compare("uint8")) {
         if (sizeof(value) != sizeof(uint8_t)) {
-            ROS_ERROR("* Error value for %s is not uint8_t", object.c_str());
+            RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error value for %s is not uint8_t", object.c_str());
             return ODRIVE_ERROR;
         }
     }
     else if (!odo.type.compare("uint16")) {
         if (sizeof(value) != sizeof(uint16_t)) {
-            ROS_ERROR("* Error value for %s is not uint16_t", object.c_str());
+             RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error value for %s is not uint16_t", object.c_str());
             return ODRIVE_ERROR;
         }
     }
     else if (!odo.type.compare("uint32")) {
         if (sizeof(value) != sizeof(uint32_t)) {
-            ROS_ERROR("* Error value for %s is not uint32_t", object.c_str());
+             RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error value for %s is not uint32_t", object.c_str());
             return ODRIVE_ERROR;
         }
     }
     else if (!odo.type.compare("uint64")) {
         if (sizeof(value) != sizeof(uint64_t)) {
-            ROS_ERROR("* Error value for %s is not uint64_t", object.c_str());
+             RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error value for %s is not uint64_t", object.c_str());
             return ODRIVE_ERROR;
         }
     }
     else if (!odo.type.compare("int32")) {
         if (sizeof(value) != sizeof(int)) {
-            ROS_ERROR("* Error value for %s is not int", object.c_str());
+             RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error value for %s is not int", object.c_str());
             return ODRIVE_ERROR;
         }
     }
     else if (!odo.type.compare("int16")) {
         if (sizeof(value) != sizeof(short)) {
-            ROS_ERROR("* Error value for %s is not short", object.c_str());
+             RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error value for %s is not short", object.c_str());
             return ODRIVE_ERROR;
         }
     }
     else if (!odo.type.compare("bool")) {
         if (sizeof(value) != sizeof(bool)) {
-            ROS_ERROR("* Error value for %s is not bool", object.c_str());
+             RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error value for %s is not bool", object.c_str());
             return ODRIVE_ERROR;
         }
     }
     else {
-        ROS_ERROR("* Error: invalid type for %s", object.c_str());
+         RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error: invalid type for %s", object.c_str());
         return ODRIVE_ERROR;
     }
 
@@ -455,21 +466,25 @@ int execOdriveFunc(odrive_endpoint *endpoint, Json::Value odrive_json,
 
     ret = getObjectByName(odrive_json, object, &odo);
     if (ret) {
-        ROS_ERROR("* Error getting ID");
+         RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error getting ID");
         return ret;
     }
 
     if (odo.type.compare("function")) {
-        ROS_ERROR("* Error invalid type");
+         RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error invalid type");
         return ret;
     }
 
     ret = endpoint->execFunc(odo.id);
     if (ret != LIBUSB_SUCCESS) {
-        ROS_ERROR("* Error executing %s function", object.c_str());
+         RCLCPP_ERROR(rclcpp::get_logger("odrive"), "* Error executing %s function", object.c_str());
     }
     return ret;
 }
+
+
+
+
 
 template int writeOdriveData(odrive_endpoint *, Json::Value, std::string, uint8_t &);
 template int writeOdriveData(odrive_endpoint *, Json::Value, std::string, uint16_t &);

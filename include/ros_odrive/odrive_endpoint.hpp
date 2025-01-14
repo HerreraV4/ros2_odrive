@@ -61,8 +61,8 @@
 
 typedef std::vector<uint8_t> commBuffer;
 
-class odrive_endpoint {
 
+class odrive_endpoint{  // Heredamos de rclcpp::Node
     public:
         odrive_endpoint();
         ~odrive_endpoint();

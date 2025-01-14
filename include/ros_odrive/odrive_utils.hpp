@@ -11,9 +11,10 @@
 #include <vector>
 #include <jsoncpp/json/json.h>
 
-#include "ros/ros.h"
+#include "rclcpp/rclcpp.hpp"
 #include "ros_odrive/odrive.hpp"
 #include "ros_odrive/odrive_endpoint.hpp"
+
 
 typedef struct _odrive_object {
     std::string name;

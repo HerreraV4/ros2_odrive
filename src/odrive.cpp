@@ -1,10 +1,15 @@
+#include "rclcpp/rclcpp.hpp"
+#include "ros_odrive_msgs/msg/odrvctrl.hpp"
+#include "ros_odrive_msgs/msg/odrvmsg.hpp"
 #include "ros_odrive/odrive.hpp"
+#include <jsoncpp/json/json.h>
+
 
 using namespace std;
 
 odrive *od;
 
-void msgCallback(const ros_odrive::odrive_ctrl::ConstPtr& msg)
+void msgCallback(const ros_odrive_msgs::msg::Odrvctrl::ConstSharedPtr &msg)
 {
     std::string cmd;
     uint8_t u8val;
@@ -20,12 +25,12 @@ void msgCallback(const ros_odrive::odrive_ctrl::ConstPtr& msg)
         cmd = "axis1";
     }
     else {
-        ROS_ERROR("* Invalid axis value in message!");
+        RCLCPP_ERROR(rclcpp::get_logger("odrive"),"* Invalid axis value in message!");
     return;
     }
 
     if ((msg->target < 0) || (msg->target >= MAX_NR_OF_TARGETS)) {
-        ROS_ERROR("* Invalid target value in message!");
+        RCLCPP_ERROR(rclcpp::get_logger("odrive"),"* Invalid target value in message!");
         return;
     }
 
@@ -44,6 +49,7 @@ void msgCallback(const ros_odrive::odrive_ctrl::ConstPtr& msg)
                     cmd.append(".controller.error"), u32val);
             writeOdriveData(endpoint, odrive_json,
                     cmd.append(".error"), u32val);
+            RCLCPP_INFO(rclcpp::get_logger("odrive"),"CASO 0. RESET");
             break;
 
 	case (CMD_AXIS_IDLE):
@@ -51,6 +57,7 @@ void msgCallback(const ros_odrive::odrive_ctrl::ConstPtr& msg)
             u32val = AXIS_STATE_IDLE;
             writeOdriveData(endpoint, odrive_json,
                     cmd.append(".requested_state"), u32val);
+            RCLCPP_INFO(rclcpp::get_logger("odrive"),"CASO 1. IDLE");
              break;
 
 	case (CMD_AXIS_CLOSED_LOOP):
@@ -58,6 +65,7 @@ void msgCallback(const ros_odrive::odrive_ctrl::ConstPtr& msg)
             u32val = AXIS_STATE_CLOSED_LOOP_CONTROL;
             writeOdriveData(endpoint, odrive_json,
                     cmd.append(".requested_state"), u32val);
+        RCLCPP_INFO(rclcpp::get_logger("odrive"),"CASO 2. CLOSED LOOP");
         break;
 
         case (CMD_AXIS_SET_VELOCITY):
@@ -65,7 +73,9 @@ void msgCallback(const ros_odrive::odrive_ctrl::ConstPtr& msg)
             fval = msg->fval;
             writeOdriveData(endpoint, odrive_json,
                     cmd.append(".controller.input_vel"), fval);
+            RCLCPP_INFO(rclcpp::get_logger("odrive"),"CASO 3. SET VELOCITY");
             break;
+
 
 	case (CMD_AXIS_SET_VELOCITY_DUAL):
             // Set velocity on both axis
@@ -75,14 +85,25 @@ void msgCallback(const ros_odrive::odrive_ctrl::ConstPtr& msg)
             fval = msg->fval2;
             writeOdriveData(endpoint, odrive_json,
                     "axis1.controller.input_vel", fval);
+            RCLCPP_INFO(rclcpp::get_logger("odrive"),"CASO 4. SET VELOCITY DUAL");
             break;
 
         case (CMD_REBOOT):
             execOdriveFunc(endpoint, odrive_json, string("reboot"));
+            RCLCPP_INFO(rclcpp::get_logger("odrive"),"CASO 5. REBOOT");
+            break;
+
+    // Set torque
+        case (CMD_AXIS_SET_TORQUE):
+            fval = msg->fval;
+            writeOdriveData(endpoint, odrive_json,
+                    cmd.append(".controller.input_torque"), fval);
+            RCLCPP_INFO(rclcpp::get_logger("odrive"),"CASO 6. TORQUE");
             break;
 
         default:
-            ROS_ERROR("* Invalid command type in message!");
+            RCLCPP_ERROR(rclcpp::get_logger("odrive"),"* Invalid command type in message!");
+            RCLCPP_INFO(rclcpp::get_logger("odrive"),"CASO 7---");
             return;
     }
 }
@@ -96,12 +117,12 @@ void msgCallback(const ros_odrive::odrive_ctrl::ConstPtr& msg)
  * return ODRIVE_OK in success
  *
  */
-int publishMessage(odrive_endpoint *endpoint, Json::Value odrive_json, ros::Publisher odrive_pub)
+int publishMessage(odrive_endpoint *endpoint, Json::Value odrive_json, rclcpp::Publisher<ros_odrive_msgs::msg::Odrvmsg>::SharedPtr &odrive_pub)
 {
     uint16_t u16val;
     uint32_t u32val;
     float fval;
-    ros_odrive::odrive_msg msg;
+    ros_odrive_msgs::msg::Odrvmsg msg;
 
     // Collect data
     readOdriveData(endpoint, odrive_json, string("vbus_voltage"), fval);
@@ -128,16 +149,16 @@ int publishMessage(odrive_endpoint *endpoint, Json::Value odrive_json, ros::Publ
     msg.pos1 = fval;
     readOdriveData(endpoint, odrive_json,
                     string("axis0.motor.current_meas_phB"), fval);
-    msg.curr0B = fval;
+    msg.curr0b = fval;
     readOdriveData(endpoint, odrive_json,
                     string("axis0.motor.current_meas_phC"), fval);
-    msg.curr0C = fval;
+    msg.curr0c = fval;
     readOdriveData(endpoint, odrive_json,
                     string("axis1.motor.current_meas_phB"), fval);
-    msg.curr1B = fval;
+    msg.curr1b = fval;
     readOdriveData(endpoint, odrive_json,
                     string("axis1.motor.current_meas_phC"), fval);
-    msg.curr1C = fval;
+    msg.curr1c = fval;
     readOdriveData(endpoint, odrive_json,
                     string("axis0.fet_thermistor.temperature"), fval);
     msg.temp0 = fval;
@@ -146,47 +167,42 @@ int publishMessage(odrive_endpoint *endpoint, Json::Value odrive_json, ros::Publ
     msg.temp1 = fval;
 
     // Publish message
-    odrive_pub.publish(msg);
+    odrive_pub->publish(msg);
 
     return ODRIVE_OK;
 }
 
-/**
- *
- * Node main function
- *
- */
-int main(int argc, char **argv)    	
-{
+
+int main(int argc, char **argv) {
     std::string od_sn;
     std::string od_cfg;
 
-    ROS_INFO("Starting ODrive...");
+    RCLCPP_INFO(rclcpp::get_logger("odrive"),"Starting ODrive...");
 
     od = new odrive();
 
-    // Initialize ROS node
-    ros::init(argc, argv, "ros_odrive"); // Initializes Node Name
-    ros::NodeHandle nh("~");
-    ros::Rate r(1);
-    nh.param<std::string>("od_sn", od_sn, "0x00000000");
-    nh.param<std::string>("od_cfg", od_cfg, "");
+    rclcpp::init(argc, argv);
+    auto nh = std::make_shared<rclcpp::Node>("odrive");
+    rclcpp::Rate r(1);
 
-    // Get device serial number string
-    if (!nh.getParam("od_sn", od_sn)) {
-        ROS_ERROR("Failed to get sn parameter %s!", od_sn.c_str());
+    nh->declare_parameter<std::string>("od_sn", "0x00000000");
+    nh->get_parameter("od_sn", od_sn);
+
+    nh->declare_parameter<std::string>("od_cfg", "");
+    nh->get_parameter("od_cfg", od_cfg);
+
+    if (!(nh->get_parameter("od_sn", od_sn))) {
+        RCLCPP_ERROR(rclcpp::get_logger("odrive"),"Failed to get sn parameter %s!", od_sn.c_str());
         return 1;
     }
 
-    // parse sn string for comma seperated values / more than one targets
     std::stringstream ssn(od_sn);
     while(ssn.good()) {
         string substr;
         getline(ssn, substr, ',');
         od->target_sn.push_back(substr);
     }
-
-    // parse cfg string for comma seperated values / more than one targets
+    
     std::stringstream scfg(od_cfg);
     while(scfg.good()) {
         string substr;
@@ -195,26 +211,28 @@ int main(int argc, char **argv)
     }
 
     if (od->target_sn.size() != od->target_cfg.size()) {
-        ROS_ERROR("* Configuration parameters do not match Serial Numbers list!");
+        RCLCPP_ERROR(rclcpp::get_logger("odrive"),"* Configuration parameters do not match Serial Numbers list!");
         return 1;
     }
 
-    // Initialize publisher/subscriber for each target
-    ROS_INFO("%d odrive instances:", (int)od->target_sn.size());
+    RCLCPP_INFO(rclcpp::get_logger("odrive"),"%d odrive instances:", (int)od->target_sn.size());
     for(int i = 0; i < od->target_sn.size() ; i++) {
-        ROS_INFO("- Instance %d: SN %s - cfg %s",
+        RCLCPP_INFO(rclcpp::get_logger("odrive"),"- Instance %d: SN %s - cfg %s",
             i, od->target_sn.at(i).c_str(), od->target_cfg.at(i).c_str());
+        
+        
         od->odrive_pub.push_back(
-    	nh.advertise<ros_odrive::odrive_msg>("odrive_msg_" + od->target_sn.at(i), 100));
+    	nh->create_publisher<ros_odrive_msgs::msg::Odrvmsg>("odrive_msg_" + od->target_sn.at(i), 100));
+        
         od->odrive_sub.push_back(
-    	nh.subscribe("odrive_ctrl_" + od->target_sn.at(i), 10, msgCallback));
-
+    	nh->create_subscription<ros_odrive_msgs::msg::Odrvctrl>("odrive_ctrl_" + od->target_sn.at(i), rclcpp::SystemDefaultsQoS(), msgCallback));
+        
         // Get odrive endpoint instance
         od->endpoint.push_back(new odrive_endpoint());
 
         // Enumarate Odrive target
         if (od->endpoint.at(i)->init(stoull(od->target_sn.at(i), 0, 16))) {
-            ROS_ERROR("* Device not found!");
+            RCLCPP_ERROR(rclcpp::get_logger("odrive"),"* Device not found!");
             return 1;
         }
 
@@ -228,30 +246,30 @@ int main(int argc, char **argv)
 
         // Process configuration file
         updateTargetConfig(od->endpoint.at(i), od->json.at(i), od->target_cfg.at(i));
-
     }
-    // Example loop - reading values and updating motor velocity
-    ROS_INFO("Starting idle loop");
-    while (ros::ok()) {
-        // Update all targets
-        for(int i = 0; i < od->target_sn.size() ; i++) {
-            // Publish status message
+    
+    RCLCPP_INFO(rclcpp::get_logger("odrive"),"Starting idle loop");
+    
+    auto timer_callback = [nh]()
+    {
+        for (int i = 0; i < od->target_sn.size(); i++) {
             publishMessage(od->endpoint.at(i), od->json.at(i), od->odrive_pub.at(i));
-
-            // update watchdog
             execOdriveFunc(od->endpoint.at(i), od->json.at(i), "axis0.watchdog_feed");
             execOdriveFunc(od->endpoint.at(i), od->json.at(i), "axis1.watchdog_feed");
-    }
+        }
+    };
 
-    // idle loop
-    r.sleep();
-        ros::spinOnce();
-    }
+    auto timer = nh->create_wall_timer(1s, timer_callback);
 
+    rclcpp::spin(nh);
+     
     for(int i = 0; i < od->target_sn.size() ; i++) {
         od->endpoint.at(i)->remove();
         delete od->endpoint.at(i);
     }
-
+    
+    rclcpp::shutdown();
     return 0;
 }
+
+

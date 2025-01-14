@@ -1,77 +1,55 @@
-cmake_minimum_required(VERSION 2.8.3)
-project(ros_odrive)
+cmake_minimum_required(VERSION 3.8)
+project(ros2_odrive)
 
-add_compile_options(-std=c++11)
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
 
-find_package(catkin REQUIRED COMPONENTS
-  message_generation
-  roscpp
-  std_msgs
+# Encuentra las dependencias necesarias
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(rclpy REQUIRED)
+find_package(ros_odrive_msgs REQUIRED)
+#find_package(libusb-1.0 REQUIRED)
+
+# Crea el ejecutable
+add_executable(odrive
+  src/odrive.cpp
+  src/odrive_endpoint.cpp
+  src/odrive_utils.cpp
 )
 
-find_package(Boost REQUIRED COMPONENTS system)
-
-add_message_files(
-  FILES
-  odrive_msg.msg
-  odrive_ctrl.msg
+# Declara las dependencias para el ejecutable
+ament_target_dependencies(odrive
+  rclcpp
+  rclpy
+  ros_odrive_msgs
 )
 
-generate_messages(
-  DEPENDENCIES
-  std_msgs
+# Incluye los directorios de encabezados
+target_include_directories(odrive PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
 )
 
-###################################
-## catkin specific configuration ##
-###################################
+# Enlaza la biblioteca jsoncpp
+target_link_libraries(odrive jsoncpp usb-1.0)
 
-set(rt_LIBRARIES rt)
-set(pthread_LIBRARIES pthread)
-set(usb-1.0_LIBRARIES usb-1.0)
-set(jsoncpp_LIBRARIES jsoncpp)
+# Define las características del compilador
+target_compile_features(odrive PUBLIC c_std_99 cxx_std_17)
 
-catkin_package(
-  INCLUDE_DIRS include
-  CATKIN_DEPENDS message_runtime roscpp std_msgs
-  DEPENDS ${rt_LIBRARIES} ${pthread_LIBRARIES} ${usb-1.0_LIBRARIES} ${jsoncpp_LIBRARIES}
+# Instala el ejecutable
+install(TARGETS odrive
+  DESTINATION lib/${PROJECT_NAME}
 )
 
-###########
-## Build ##
-###########
+# Opciones para pruebas
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+  set(ament_cmake_copyright_FOUND TRUE)
+  set(ament_cmake_cpplint_FOUND TRUE)
+  ament_lint_auto_find_test_dependencies()
+endif()
 
-include_directories(
-  include
-  ${catkin_INCLUDE_DIRS}
-)
-
-add_executable(ros_odrive src/odrive.cpp src/odrive_endpoint.cpp src/odrive_utils.cpp)
-add_dependencies(ros_odrive ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(ros_odrive ${usb-1.0_LIBRARIES} ${catkin_LIBRARIES} ${jsoncpp_LIBRARIES})
-
-#############
-## Install ##
-#############
-
-install(TARGETS ros_odrive 
-  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-)
-
-install(TARGETS ros_odrive
-  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-  RUNTIME DESTINATION ${CATKIN_GLOBAL_BIN_DESTINATION}
-)
-
-## Mark cpp header files for installation
-install(DIRECTORY include/${PROJECT_NAME}/
-  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
-  FILES_MATCHING PATTERN "*.h"
-  PATTERN ".svn" EXCLUDE
-)
-
-#############
-## Testing ##
-#############
-
+# Exporta el paquete
+ament_package()
